@@ -19,6 +19,7 @@ pub enum NetworkCommand {
     Timeout,
     Exit,
     Connect { ssid: String, passphrase: String },
+    Disconnect { ssid: String},
 }
 
 pub enum NetworkCommandResponse {
@@ -29,7 +30,6 @@ struct NetworkCommandHandler {
     manager: NetworkManager,
     device: Device,
     access_points: Vec<AccessPoint>,
-    portal_connection: Option<Connection>,
     config: Config,
     dnsmasq: process::Child,
     server_tx: Sender<NetworkCommandResponse>,
@@ -39,18 +39,22 @@ struct NetworkCommandHandler {
 
 impl NetworkCommandHandler {
     fn new(config: &Config, exit_tx: &Sender<ExitResult>) -> Result<Self> {
+
+        // Create a communication channel
         let (network_tx, network_rx) = channel();
 
+        // Manually handle signals in this thread (signal exit of thread upon unix signal)
         Self::spawn_trap_exit_signals(exit_tx, network_tx.clone());
 
+        // Create NM dbus interface
         let manager = NetworkManager::new();
         debug!("NetworkManager connection initialized");
 
+        // Find device for the specified interface, or find the first wifi device
         let device = find_device(&manager, &config.interface)?;
 
+        // Get initial list of access points
         let access_points = get_access_points(&device)?;
-
-        let portal_connection = Some(create_portal(&device, config)?);
 
         let dnsmasq = start_dnsmasq(config, &device)?;
 
@@ -67,7 +71,6 @@ impl NetworkCommandHandler {
             manager,
             device,
             access_points,
-            portal_connection,
             config,
             dnsmasq,
             server_tx,
@@ -119,6 +122,7 @@ impl NetworkCommandHandler {
     fn spawn_trap_exit_signals(exit_tx: &Sender<ExitResult>, network_tx: Sender<NetworkCommand>) {
         let exit_tx_trap = exit_tx.clone();
 
+        // Create thread that monitors for exit signals and translates them to an exit event on the network channel
         thread::spawn(move || {
             if let Err(e) = trap_exit_signals() {
                 exit(&exit_tx_trap, e);
@@ -155,9 +159,10 @@ impl NetworkCommandHandler {
                     return Ok(());
                 },
                 NetworkCommand::Connect { ssid, passphrase } => {
-                    if self.connect(&ssid, &passphrase)? {
-                        return Ok(());
-                    }
+                    self.connect(&ssid, &passphrase)?;
+                },
+                NetworkCommand::Disconnect { ssid } => {
+                    self.disconnect(&ssid)?;
                 },
             }
         }
@@ -177,10 +182,6 @@ impl NetworkCommandHandler {
     fn stop(&mut self, exit_tx: &Sender<ExitResult>, result: ExitResult) {
         let _ = self.dnsmasq.kill();
 
-        if let Some(ref connection) = self.portal_connection {
-            let _ = stop_portal_impl(connection, &self.config);
-        }
-
         let _ = exit_tx.send(result);
     }
 
@@ -198,12 +199,6 @@ impl NetworkCommandHandler {
 
     fn connect(&mut self, ssid: &str, passphrase: &str) -> Result<bool> {
         delete_connection_if_exists(&self.manager, ssid);
-
-        if let Some(ref connection) = self.portal_connection {
-            stop_portal(connection, &self.config)?;
-        }
-
-        self.portal_connection = None;
 
         self.access_points = get_access_points(&self.device)?;
 
@@ -246,7 +241,11 @@ impl NetworkCommandHandler {
 
         self.access_points = get_access_points(&self.device)?;
 
-        self.portal_connection = Some(create_portal(&self.device, &self.config)?);
+        Ok(false)
+    }
+
+    fn disconnect(&mut self, ssid: &str) -> Result<bool> {
+        self.device.disconnect()?;
 
         Ok(false)
     }
@@ -265,12 +264,17 @@ pub fn process_network_commands(config: &Config, exit_tx: &Sender<ExitResult>) {
 }
 
 pub fn init_networking() -> Result<()> {
+    // Start NetworkManager, if not already running
     start_network_manager_service()?;
 
+    // Delete any existing wifi AP config information
+    // TODO: We probably don't want to do this!
     delete_access_point_profiles().chain_err(|| ErrorKind::DeleteAccessPoint)
 }
 
 pub fn find_device(manager: &NetworkManager, interface: &Option<String>) -> Result<Device> {
+
+    // Check for wifi device on specified interface
     if let Some(ref interface) = *interface {
         let device = manager
             .get_device_by_interface(interface)
@@ -283,6 +287,7 @@ pub fn find_device(manager: &NetworkManager, interface: &Option<String>) -> Resu
             bail!(ErrorKind::NotAWiFiDevice(interface.clone()))
         }
     } else {
+        // No interface specified, scan for the first detected Wifi interface
         let devices = manager.get_devices()?;
 
         let index = devices
@@ -357,39 +362,6 @@ fn find_access_point<'a>(access_points: &'a [AccessPoint], ssid: &str) -> Option
     None
 }
 
-fn create_portal(device: &Device, config: &Config) -> Result<Connection> {
-    let portal_passphrase = config.passphrase.as_ref().map(|p| p as &str);
-
-    create_portal_impl(device, &config.ssid, &config.gateway, &portal_passphrase)
-        .chain_err(|| ErrorKind::CreateCaptivePortal)
-}
-
-fn create_portal_impl(
-    device: &Device,
-    ssid: &str,
-    gateway: &Ipv4Addr,
-    passphrase: &Option<&str>,
-) -> Result<Connection> {
-    info!("Starting access point...");
-    let wifi_device = device.as_wifi_device().unwrap();
-    let (portal_connection, _) = wifi_device.create_hotspot(ssid, *passphrase, Some(*gateway))?;
-    info!("Access point '{}' created", ssid);
-    Ok(portal_connection)
-}
-
-fn stop_portal(connection: &Connection, config: &Config) -> Result<()> {
-    stop_portal_impl(connection, config).chain_err(|| ErrorKind::StopAccessPoint)
-}
-
-fn stop_portal_impl(connection: &Connection, config: &Config) -> Result<()> {
-    info!("Stopping access point '{}'...", config.ssid);
-    connection.deactivate()?;
-    connection.delete()?;
-    thread::sleep(Duration::from_secs(1));
-    info!("Access point '{}' stopped", config.ssid);
-    Ok(())
-}
-
 fn wait_for_connectivity(manager: &NetworkManager, timeout: u64) -> Result<bool> {
     let mut total_time = 0;
 
@@ -424,12 +396,15 @@ fn wait_for_connectivity(manager: &NetworkManager, timeout: u64) -> Result<bool>
 }
 
 pub fn start_network_manager_service() -> Result<()> {
-    let state =
-        NetworkManager::get_service_state().chain_err(|| ErrorKind::NetworkManagerServiceState)?;
+    // Get the current state of the network manager service
+    let state = NetworkManager::get_service_state().chain_err(|| ErrorKind::NetworkManagerServiceState)?;
 
     if state != ServiceState::Active {
+          // If not active, start the service, with a 15 second timeout value
         let state = NetworkManager::start_service(15).chain_err(|| ErrorKind::StartNetworkManager)?;
+
         if state != ServiceState::Active {
+            // Return error
             bail!(ErrorKind::StartActiveNetworkManager);
         } else {
             info!("NetworkManager service started successfully");
@@ -442,16 +417,22 @@ pub fn start_network_manager_service() -> Result<()> {
 }
 
 fn delete_access_point_profiles() -> Result<()> {
+
+    // Create reference counted NetworkManager interface
     let manager = NetworkManager::new();
 
+    // Get list of every connection ever configured or stored in NetworkManager
     let connections = manager.get_connections()?;
 
     for connection in connections {
+        // Filter on wifi connection types
         if &connection.settings().kind == "802-11-wireless" && &connection.settings().mode == "ap" {
             debug!(
                 "Deleting access point connection profile: {:?}",
                 connection.settings().ssid,
             );
+
+            // Delete the connection profile
             connection.delete()?;
         }
     }

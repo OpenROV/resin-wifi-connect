@@ -142,6 +142,7 @@ pub fn start_server(
     router.get("/", Static::new(ui_directory), "index");
     router.get("/ssid", ssid, "ssid");
     router.post("/connect", connect, "connect");
+    router.post("/disconnect", disconnect, "disconnect");
 
     let mut assets = Mount::new();
     assets.mount("/", router);
@@ -158,6 +159,7 @@ pub fn start_server(
     info!("Starting HTTP server on {}", &address);
 
     if let Err(e) = Iron::new(chain).http(&address) {
+        info!("Exiting HTTP server on {}", &address);
         exit(
             &exit_tx_clone,
             ErrorKind::StartHTTPServer(address, e.description().into()).into(),
@@ -204,6 +206,21 @@ fn connect(req: &mut Request) -> IronResult<Response> {
     let command = NetworkCommand::Connect {
         ssid: ssid,
         passphrase: passphrase,
+    };
+
+    if let Err(e) = request_state.network_tx.send(command) {
+        exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandConnect)
+    } else {
+        Ok(Response::with(status::Ok))
+    }
+}
+
+fn disconnect(req: &mut Request) -> IronResult<Response> {
+
+    let request_state = get_request_state!(req);
+
+    let command = NetworkCommand::Disconnect {
+        ssid: String::from("Hello, world!")
     };
 
     if let Err(e) = request_state.network_tx.send(command) {

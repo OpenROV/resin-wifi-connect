@@ -6,12 +6,14 @@ use std::str::FromStr;
 use std::path::PathBuf;
 use std::ffi::OsStr;
 
+// Default config info
 const DEFAULT_GATEWAY: &str = "192.168.42.1";
 const DEFAULT_DHCP_RANGE: &str = "192.168.42.2,192.168.42.254";
 const DEFAULT_SSID: &str = "WiFi Connect";
 const DEFAULT_ACTIVITY_TIMEOUT: &str = "0";
 const DEFAULT_UI_DIRECTORY: &str = "ui";
 
+// Clonable config structure
 #[derive(Clone)]
 pub struct Config {
     pub interface: Option<String>,
@@ -23,12 +25,14 @@ pub struct Config {
     pub ui_directory: PathBuf,
 }
 
+// Get config info from both environment variables and command line parameters using clap library
 pub fn get_config() -> Config {
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
+            // TODO: Won't need
             Arg::with_name("portal-interface")
                 .short("i")
                 .long("portal-interface")
@@ -37,6 +41,7 @@ pub fn get_config() -> Config {
                 .takes_value(true),
         )
         .arg(
+            // TODO: Won't need
             Arg::with_name("portal-ssid")
                 .short("s")
                 .long("portal-ssid")
@@ -48,6 +53,7 @@ pub fn get_config() -> Config {
                 .takes_value(true),
         )
         .arg(
+            // TODO: Won't need
             Arg::with_name("portal-passphrase")
                 .short("p")
                 .long("portal-passphrase")
@@ -56,6 +62,7 @@ pub fn get_config() -> Config {
                 .takes_value(true),
         )
         .arg(
+            // TODO: Won't need
             Arg::with_name("portal-gateway")
                 .short("g")
                 .long("portal-gateway")
@@ -67,6 +74,7 @@ pub fn get_config() -> Config {
                 .takes_value(true),
         )
         .arg(
+            // TODO: Won't need
             Arg::with_name("portal-dhcp-range")
                 .short("d")
                 .long("portal-dhcp-range")
@@ -86,6 +94,7 @@ pub fn get_config() -> Config {
                 .takes_value(true),
         )
         .arg(
+            // TODO: Won't need
             Arg::with_name("ui-directory")
                 .short("u")
                 .long("ui-directory")
@@ -98,26 +107,31 @@ pub fn get_config() -> Config {
         )
         .get_matches();
 
+    // TODO: Won't need
     let interface: Option<String> = matches.value_of("portal-interface").map_or_else(
         || env::var("PORTAL_INTERFACE").ok(),
         |v| Some(v.to_string()),
     );
 
+    // TODO: Won't need
     let ssid: String = matches.value_of("portal-ssid").map_or_else(
         || env::var("PORTAL_SSID").unwrap_or_else(|_| DEFAULT_SSID.to_string()),
         String::from,
     );
 
+    // TODO: Won't need
     let passphrase: Option<String> = matches.value_of("portal-passphrase").map_or_else(
         || env::var("PORTAL_PASSPHRASE").ok(),
         |v| Some(v.to_string()),
     );
 
+    // TODO: Won't need
     let gateway = Ipv4Addr::from_str(&matches.value_of("portal-gateway").map_or_else(
         || env::var("PORTAL_GATEWAY").unwrap_or_else(|_| DEFAULT_GATEWAY.to_string()),
         String::from,
     )).expect("Cannot parse gateway address");
 
+    // TODO: Won't need
     let dhcp_range = matches.value_of("portal-dhcp-range").map_or_else(
         || env::var("PORTAL_DHCP_RANGE").unwrap_or_else(|_| DEFAULT_DHCP_RANGE.to_string()),
         String::from,
@@ -128,8 +142,10 @@ pub fn get_config() -> Config {
         String::from,
     )).expect("Cannot parse activity timeout");
 
+    // TODO: Won't need
     let ui_directory = get_ui_directory(matches.value_of("ui-directory"));
 
+    // Create and return config descriptor
     Config {
         interface: interface,
         ssid: ssid,

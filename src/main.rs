@@ -38,7 +38,10 @@ use network::{init_networking, process_network_commands};
 use exit::block_exit_signals;
 
 fn main() {
+    // Run the program
     if let Err(ref e) = run() {
+
+        // Handle errors
         let stderr = &mut ::std::io::stderr();
         let errmsg = "Error writing to stderr";
 
@@ -48,25 +51,32 @@ fn main() {
             writeln!(stderr, "  caused by: {}", inner).expect(errmsg);
         }
 
+        // Exit with error
         process::exit(exit_code(e));
     }
 }
 
 fn run() -> Result<()> {
+    // Stops signal handlers from working
     block_exit_signals()?;
 
+    // Initialize logger
     logger::init();
 
+    // Load config information
     let config = get_config();
 
+    // Start NetworkManager, if necessary, and clear existing Wifi configurations
     init_networking()?;
 
     let (exit_tx, exit_rx) = channel();
 
+    // Spawn a thread that takes ownership of config and exit_tx
     thread::spawn(move || {
         process_network_commands(&config, &exit_tx);
     });
 
+    // Sleep until an exit signal is received, indicating that the thread has terminated, either intentionally or due to an error
     match exit_rx.recv() {
         Ok(result) => if let Err(reason) = result {
             return Err(reason);
