@@ -57,14 +57,6 @@ error_chain! {
             description("Getting access points failed")
         }
 
-        CreateCaptivePortal {
-            description("Creating the captive portal failed")
-        }
-
-        StopAccessPoint {
-            description("Stopping the access point failed")
-        }
-
         DeleteAccessPoint {
             description("Deleting access point connection profile failed")
         }
@@ -86,10 +78,6 @@ error_chain! {
             description("Getting the NetworkManager service state failed")
         }
 
-        Dnsmasq {
-            description("Spawning dnsmasq failed")
-        }
-
         BlockExitSignals {
             description("Blocking exit signals failed")
         }
@@ -102,7 +90,6 @@ error_chain! {
 
 pub fn exit_code(e: &Error) -> i32 {
     match *e.kind() {
-        ErrorKind::Dnsmasq => 3,
         ErrorKind::RecvAccessPointSSIDs => 4,
         ErrorKind::SendAccessPointSSIDs => 5,
         ErrorKind::SerializeAccessPointSSIDs => 6,
@@ -113,8 +100,6 @@ pub fn exit_code(e: &Error) -> i32 {
         ErrorKind::NotAWiFiDevice(_) => 11,
         ErrorKind::NoWiFiDevice => 12,
         ErrorKind::NoAccessPoints => 13,
-        ErrorKind::CreateCaptivePortal => 14,
-        ErrorKind::StopAccessPoint => 15,
         ErrorKind::DeleteAccessPoint => 16,
         ErrorKind::StartHTTPServer(_, _) => 17,
         ErrorKind::StartActiveNetworkManager => 18,

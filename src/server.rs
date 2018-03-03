@@ -6,9 +6,7 @@ use std::error::Error as StdError;
 use serde_json;
 use path::PathBuf;
 use iron::prelude::*;
-use iron::{headers, status, typemap, AfterMiddleware, Iron, IronError, IronResult, Request,
-           Response, Url};
-use iron::modifiers::Redirect;
+use iron::{status, typemap, Iron, IronError, IronResult, Request, Response};
 use router::Router;
 use staticfile::Static;
 use mount::Mount;
@@ -102,26 +100,6 @@ where
     ))
 }
 
-struct RedirectMiddleware;
-
-impl AfterMiddleware for RedirectMiddleware {
-    fn catch(&self, req: &mut Request, err: IronError) -> IronResult<Response> {
-        let gateway = {
-            let request_state = get_request_state!(req);
-            format!("{}", request_state.gateway)
-        };
-
-        if let Some(host) = req.headers.get::<headers::Host>() {
-            if host.hostname != gateway {
-                let url = Url::parse(&format!("http://{}/", gateway)).unwrap();
-                return Ok(Response::with((status::Found, Redirect(url))));
-            }
-        }
-
-        Err(err)
-    }
-}
-
 pub fn start_server(
     gateway: Ipv4Addr,
     server_rx: Receiver<NetworkCommandResponse>,
@@ -151,10 +129,9 @@ pub fn start_server(
     assets.mount("/js", Static::new(&ui_directory.join("js")));
 
     let mut chain = Chain::new(assets);
-    chain.link(Write::<RequestSharedState>::both(request_state));
-    chain.link_after(RedirectMiddleware);
+    chain.link(Write::<RequestSharedState>::both( request_state ));
 
-    let address = format!("{}:80", gateway_clone);
+    let address = format!("{}:3090", gateway_clone);
 
     info!("Starting HTTP server on {}", &address);
 
@@ -219,9 +196,7 @@ fn disconnect(req: &mut Request) -> IronResult<Response> {
 
     let request_state = get_request_state!(req);
 
-    let command = NetworkCommand::Disconnect {
-        ssid: String::from("Hello, world!")
-    };
+    let command = NetworkCommand::Disconnect;
 
     if let Err(e) = request_state.network_tx.send(command) {
         exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandConnect)

@@ -22,7 +22,6 @@ mod errors;
 mod config;
 mod network;
 mod server;
-mod dnsmasq;
 mod logger;
 mod exit;
 

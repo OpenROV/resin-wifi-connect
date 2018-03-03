@@ -1,25 +1,25 @@
 use std::thread;
-use std::process;
 use std::time::Duration;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::error::Error;
-use std::net::Ipv4Addr;
 
-use network_manager::{AccessPoint, Connection, ConnectionState, Connectivity, Device, DeviceType,
+use network_manager::{AccessPoint, ConnectionState, Connectivity, Device, DeviceType,
                       NetworkManager, ServiceState};
 
 use errors::*;
 use exit::{exit, trap_exit_signals, ExitResult};
 use config::Config;
-use dnsmasq::start_dnsmasq;
 use server::start_server;
+use std::net::Ipv4Addr;
+
+use std::str::FromStr;
 
 pub enum NetworkCommand {
     Activate,
     Timeout,
     Exit,
     Connect { ssid: String, passphrase: String },
-    Disconnect { ssid: String},
+    Disconnect,
 }
 
 pub enum NetworkCommandResponse {
@@ -31,7 +31,6 @@ struct NetworkCommandHandler {
     device: Device,
     access_points: Vec<AccessPoint>,
     config: Config,
-    dnsmasq: process::Child,
     server_tx: Sender<NetworkCommandResponse>,
     network_rx: Receiver<NetworkCommand>,
     activated: bool,
@@ -56,8 +55,6 @@ impl NetworkCommandHandler {
         // Get initial list of access points
         let access_points = get_access_points(&device)?;
 
-        let dnsmasq = start_dnsmasq(config, &device)?;
-
         let (server_tx, server_rx) = channel();
 
         Self::spawn_server(config, exit_tx, server_rx, network_tx.clone());
@@ -72,7 +69,6 @@ impl NetworkCommandHandler {
             device,
             access_points,
             config,
-            dnsmasq,
             server_tx,
             network_rx,
             activated,
@@ -85,7 +81,8 @@ impl NetworkCommandHandler {
         server_rx: Receiver<NetworkCommandResponse>,
         network_tx: Sender<NetworkCommand>,
     ) {
-        let gateway = config.gateway;
+        // TODO: Set up gateway with specified interface's IPv4 address
+        let gateway = Ipv4Addr::from_str("0.0.0.0").expect( "Test" );
         let exit_tx_server = exit_tx.clone();
         let ui_directory = config.ui_directory.clone();
 
@@ -161,8 +158,8 @@ impl NetworkCommandHandler {
                 NetworkCommand::Connect { ssid, passphrase } => {
                     self.connect(&ssid, &passphrase)?;
                 },
-                NetworkCommand::Disconnect { ssid } => {
-                    self.disconnect(&ssid)?;
+                NetworkCommand::Disconnect => {
+                    self.disconnect()?;
                 },
             }
         }
@@ -180,8 +177,6 @@ impl NetworkCommandHandler {
     }
 
     fn stop(&mut self, exit_tx: &Sender<ExitResult>, result: ExitResult) {
-        let _ = self.dnsmasq.kill();
-
         let _ = exit_tx.send(result);
     }
 
@@ -244,7 +239,7 @@ impl NetworkCommandHandler {
         Ok(false)
     }
 
-    fn disconnect(&mut self, ssid: &str) -> Result<bool> {
+    fn disconnect( &mut self ) -> Result<bool> {
         self.device.disconnect()?;
 
         Ok(false)
