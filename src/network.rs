@@ -4,7 +4,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::error::Error;
 
 use network_manager::{AccessPoint, ConnectionState, Connectivity, Device, DeviceType,
-                      NetworkManager, ServiceState};
+                      NetworkManager, ServiceState, DeviceState};
 
 use errors::*;
 use exit::{exit, trap_exit_signals, ExitResult};
@@ -20,6 +20,8 @@ pub enum NetworkCommand {
     Exit,
     Connect { ssid: String, passphrase: String },
     Disconnect,
+    CheckInternet,
+    Clear,
 }
 
 pub enum NetworkCommandResponse {
@@ -161,6 +163,12 @@ impl NetworkCommandHandler {
                 NetworkCommand::Disconnect => {
                     self.disconnect()?;
                 },
+                NetworkCommand::CheckInternet => {
+
+                },
+                NetworkCommand::Clear => {
+                    
+                }
             }
         }
     }
@@ -193,7 +201,9 @@ impl NetworkCommandHandler {
     }
 
     fn connect(&mut self, ssid: &str, passphrase: &str) -> Result<bool> {
-        delete_connection_if_exists(&self.manager, ssid);
+        // delete_connection_if_exists(&self.manager, ssid);
+
+        // TODO: If already connected to specified SSID, return Ok
 
         self.access_points = get_access_points(&self.device)?;
 
@@ -204,6 +214,7 @@ impl NetworkCommandHandler {
 
             match wifi_device.connect(access_point, passphrase) {
                 Ok((connection, state)) => {
+                    // If connection is activated, wait for internet connectivity
                     if state == ConnectionState::Activated {
                         match wait_for_connectivity(&self.manager, 20) {
                             Ok(has_connectivity) => {
@@ -219,6 +230,7 @@ impl NetworkCommandHandler {
                         return Ok(true);
                     }
 
+                    // If anything other than Activated, delete this connection to force a fix
                     if let Err(err) = connection.delete() {
                         error!("Deleting connection object failed: {}", err)
                     }
@@ -240,7 +252,20 @@ impl NetworkCommandHandler {
     }
 
     fn disconnect( &mut self ) -> Result<bool> {
-        self.device.disconnect()?;
+        match self.device.disconnect()  {
+            Ok( state ) => {
+                if state == DeviceState::Disconnected {
+                    info!( "Disconnected!" );
+                    return Ok(true);
+                }
+                else {
+                    warn!( "Disconnect did not work!");
+                }
+            },
+            Err(e) => {
+                info!( "Weird error: {:?}", e );
+            }
+        }
 
         Ok(false)
     }

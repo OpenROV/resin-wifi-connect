@@ -149,10 +149,14 @@ fn ssid(req: &mut Request) -> IronResult<Response> {
 
     let request_state = get_request_state!(req);
 
+    // Send command to network thread to fetch SSIDs
     if let Err(e) = request_state.network_tx.send(NetworkCommand::Activate) {
         return exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandActivate);
     }
 
+    // Wait for network thread to respond
+    // NOTE: Could choose to timeout request here if it isn't received fast enough
+    // https://doc.rust-lang.org/std/sync/mpsc/struct.Receiver.html
     let access_points_ssids = match request_state.server_rx.recv() {
         Ok(result) => match result {
             NetworkCommandResponse::AccessPointsSsids(ssids) => ssids,
@@ -160,11 +164,13 @@ fn ssid(req: &mut Request) -> IronResult<Response> {
         Err(e) => return exit_with_error(&request_state, e, ErrorKind::RecvAccessPointSSIDs),
     };
 
+    // Convert vector of strings to JSON string
     let access_points_json = match serde_json::to_string(&access_points_ssids) {
         Ok(json) => json,
         Err(e) => return exit_with_error(&request_state, e, ErrorKind::SerializeAccessPointSSIDs),
     };
 
+    // Respond with list of SSIDs in JSON format
     Ok(Response::with((status::Ok, access_points_json)))
 }
 
@@ -203,4 +209,27 @@ fn disconnect(req: &mut Request) -> IronResult<Response> {
     } else {
         Ok(Response::with(status::Ok))
     }
+}
+
+fn check_internet_connection(req: &mut Request) -> IronResult<Response> {
+
+    let request_state = get_request_state!(req);
+    let command = NetworkCommand::CheckInternet;
+
+    // TODO: Send command to network thread to check for connectivity
+
+    // Await result
+
+    // Send response
+    Ok( Response::with(status::Ok) )
+}
+
+fn clear_connections(req: &mut Request) -> IronResult<Response> {
+
+    let request_state = get_request_state!(req);
+    let command = NetworkCommand::Clear;
+
+    // TODO: Send command to network thread to check for connectivity
+
+    Ok( Response::with(status::Ok) )
 }
