@@ -18,8 +18,6 @@ use std::str::FromStr;
 use tokio_core;
 use tokio_ping;
 
-use futures::Stream;
-
 pub enum NetworkCommand {
     Activate,
     Timeout,
@@ -174,7 +172,7 @@ impl NetworkCommandHandler {
                     self.check_internet()?;
                 },
                 NetworkCommand::Clear => {
-                    
+                    delete_existing_wifi_connections(&self.manager);
                 }
             }
         }
@@ -212,9 +210,9 @@ impl NetworkCommandHandler {
         let ping_result = send_ping();
 
         let connected = match ping_result {
-            Ok(Some(dur)) => true,
+            Ok(Some(dur)) => { info!( "Ping response time (ms): {:?}", dur ); true }
             Ok(None) => false,
-            Err(e) => false
+            Err(e) => { info!( "Error pinging: {:?}", e ); false }
         };
 
         self.server_tx
@@ -482,7 +480,7 @@ fn delete_access_point_profiles() -> Result<()> {
     Ok(())
 }
 
-fn delete_connection_if_exists(manager: &NetworkManager, ssid: &str) {
+fn delete_existing_wifi_connections(manager: &NetworkManager) {
     let connections = match manager.get_connections() {
         Ok(connections) => connections,
         Err(e) => {
@@ -492,20 +490,43 @@ fn delete_connection_if_exists(manager: &NetworkManager, ssid: &str) {
     };
 
     for connection in connections {
-        if let Ok(connection_ssid) = connection.settings().ssid.as_str() {
-            if &connection.settings().kind == "802-11-wireless" && connection_ssid == ssid {
-                info!(
-                    "Deleting existing WiFi connection: {:?}",
-                    connection.settings().ssid,
-                );
+        if &connection.settings().kind == "802-11-wireless" {
+            info!(
+                "Deleting existing WiFi connection: {:?}",
+                connection.settings().ssid,
+            );
 
-                if let Err(e) = connection.delete() {
-                    error!("Deleting existing WiFi connection failed: {}", e);
-                }
+            if let Err(e) = connection.delete() {
+                error!("Deleting existing WiFi connection failed: {}", e);
             }
         }
     }
 }
+
+// fn delete_connection_if_exists(manager: &NetworkManager, ssid: &str) {
+//     let connections = match manager.get_connections() {
+//         Ok(connections) => connections,
+//         Err(e) => {
+//             error!("Getting existing connections failed: {}", e);
+//             return;
+//         },
+//     };
+
+//     for connection in connections {
+//         if let Ok(connection_ssid) = connection.settings().ssid.as_str() {
+//             if &connection.settings().kind == "802-11-wireless" && connection_ssid == ssid {
+//                 info!(
+//                     "Deleting existing WiFi connection: {:?}",
+//                     connection.settings().ssid,
+//                 );
+
+//                 if let Err(e) = connection.delete() {
+//                     error!("Deleting existing WiFi connection failed: {}", e);
+//                 }
+//             }
+//         }
+//     }
+// }
 
 fn send_ping() -> std::result::Result<Option<f64>, tokio_ping::Error> {
     let addr = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));

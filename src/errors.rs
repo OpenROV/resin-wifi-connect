@@ -43,6 +43,10 @@ error_chain! {
             description("Sending NetworkCommand::Connect failed")
         }
 
+        SendNetworkCommandClear {
+            description( "Sending NetworkCommand::Clear failed" )
+        }
+
         DeviceByInterface(interface: String) {
             description("Cannot find network device with interface name")
             display("Cannot find network device with interface name '{}'", interface)
@@ -94,7 +98,7 @@ error_chain! {
 
 pub fn exit_code(e: &Error) -> i32 {
     match *e.kind() {
-        ErrorKind::PingUnsuccessful => 14,
+        
         ErrorKind::RecvAccessPointSSIDs => 4,
         ErrorKind::SendAccessPointSSIDs => 5,
         ErrorKind::SerializeAccessPointSSIDs => 6,
@@ -105,6 +109,8 @@ pub fn exit_code(e: &Error) -> i32 {
         ErrorKind::NotAWiFiDevice(_) => 11,
         ErrorKind::NoWiFiDevice => 12,
         ErrorKind::NoAccessPoints => 13,
+        ErrorKind::PingUnsuccessful => 14,
+        ErrorKind::SendNetworkCommandClear => 15,
         ErrorKind::DeleteAccessPoint => 16,
         ErrorKind::StartHTTPServer(_, _) => 17,
         ErrorKind::StartActiveNetworkManager => 18,

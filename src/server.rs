@@ -118,10 +118,11 @@ pub fn start_server(
 
     let mut router = Router::new();
     router.get("/", Static::new(ui_directory), "index");
-    router.get("/ssid", ssid, "ssid");
+    router.get("/ssids", ssid, "ssids");
+    router.get("/internetAccess", check_internet_connection, "internetAccess" );
     router.post("/connect", connect, "connect");
     router.post("/disconnect", disconnect, "disconnect");
-    router.get("/internetAccess", check_internet_connection, "internetAccess" );
+    router.post("/clear", clear_connections, "clear" );
 
     let mut assets = Mount::new();
     assets.mount("/", router);
@@ -219,7 +220,7 @@ fn check_internet_connection(req: &mut Request) -> IronResult<Response> {
     let command = NetworkCommand::CheckInternet;
 
     // Send command to network thread to check internet connection
-    if let Err(e) = request_state.network_tx.send(NetworkCommand::CheckInternet) {
+    if let Err(e) = request_state.network_tx.send(command) {
         return exit_with_error(&request_state, e, ErrorKind::PingUnsuccessful);
     }
 
@@ -244,7 +245,9 @@ fn clear_connections(req: &mut Request) -> IronResult<Response> {
     let request_state = get_request_state!(req);
     let command = NetworkCommand::Clear;
 
-    // TODO: Send command to network thread to check for connectivity
-
-    Ok( Response::with(status::Ok) )
+    if let Err(e) = request_state.network_tx.send(command) {
+        exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandClear)
+    } else {
+        Ok(Response::with(status::Ok))
+    }
 }
