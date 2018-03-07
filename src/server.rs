@@ -121,6 +121,7 @@ pub fn start_server(
     router.get("/ssid", ssid, "ssid");
     router.post("/connect", connect, "connect");
     router.post("/disconnect", disconnect, "disconnect");
+    router.get("/checkConnectivity", check_internet_connection, "checkConnectivity" );
 
     let mut assets = Mount::new();
     assets.mount("/", router);
@@ -160,6 +161,7 @@ fn ssid(req: &mut Request) -> IronResult<Response> {
     let access_points_ssids = match request_state.server_rx.recv() {
         Ok(result) => match result {
             NetworkCommandResponse::AccessPointsSsids(ssids) => ssids,
+            _ => Vec::new(),
         },
         Err(e) => return exit_with_error(&request_state, e, ErrorKind::RecvAccessPointSSIDs),
     };
@@ -216,12 +218,25 @@ fn check_internet_connection(req: &mut Request) -> IronResult<Response> {
     let request_state = get_request_state!(req);
     let command = NetworkCommand::CheckInternet;
 
-    // TODO: Send command to network thread to check for connectivity
+    // Send command to network thread to check internet connection
+    if let Err(e) = request_state.network_tx.send(NetworkCommand::CheckInternet) {
+        return exit_with_error(&request_state, e, ErrorKind::PingUnsuccessful);
+    }
 
-    // Await result
+    // Wait for network thread to respond
+    let ping_result = match request_state.server_rx.recv() {
+        Ok(result) => match result {
+            NetworkCommandResponse::InternetCheckResponse(resp) => resp,
+            _ => false
+        },
+        Err(e) => return exit_with_error(&request_state, e, ErrorKind::RecvAccessPointSSIDs),
+    };
 
     // Send response
-    Ok( Response::with(status::Ok) )
+    match ping_result {
+        true => Ok( Response::with(status::Ok) ),
+        false => Ok( Response::with(status::ServiceUnavailable) )
+    }
 }
 
 fn clear_connections(req: &mut Request) -> IronResult<Response> {

@@ -2,6 +2,7 @@ use std::thread;
 use std::time::Duration;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::error::Error;
+use std;
 
 use network_manager::{AccessPoint, ConnectionState, Connectivity, Device, DeviceType,
                       NetworkManager, ServiceState, DeviceState};
@@ -10,9 +11,14 @@ use errors::*;
 use exit::{exit, trap_exit_signals, ExitResult};
 use config::Config;
 use server::start_server;
-use std::net::Ipv4Addr;
 
+use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+
+use tokio_core;
+use tokio_ping;
+
+use futures::Stream;
 
 pub enum NetworkCommand {
     Activate,
@@ -26,6 +32,7 @@ pub enum NetworkCommand {
 
 pub enum NetworkCommandResponse {
     AccessPointsSsids(Vec<String>),
+    InternetCheckResponse(bool)
 }
 
 struct NetworkCommandHandler {
@@ -164,7 +171,7 @@ impl NetworkCommandHandler {
                     self.disconnect()?;
                 },
                 NetworkCommand::CheckInternet => {
-
+                    self.check_internet()?;
                 },
                 NetworkCommand::Clear => {
                     
@@ -198,6 +205,21 @@ impl NetworkCommandHandler {
                 access_points_ssids,
             ))
             .chain_err(|| ErrorKind::SendAccessPointSSIDs)
+    }
+
+    fn check_internet(&mut self) -> ExitResult {
+
+        let ping_result = send_ping();
+
+        let connected = match ping_result {
+            Ok(Some(dur)) => true,
+            Ok(None) => false,
+            Err(e) => false
+        };
+
+        self.server_tx
+            .send(NetworkCommandResponse::InternetCheckResponse( connected,) )
+            .chain_err(|| ErrorKind::PingUnsuccessful)
     }
 
     fn connect(&mut self, ssid: &str, passphrase: &str) -> Result<bool> {
@@ -483,4 +505,14 @@ fn delete_connection_if_exists(manager: &NetworkManager, ssid: &str) {
             }
         }
     }
+}
+
+fn send_ping() -> std::result::Result<Option<f64>, tokio_ping::Error> {
+    let addr = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+
+    let mut reactor = tokio_core::reactor::Core::new().unwrap();
+    let pinger = tokio_ping::Pinger::new(&reactor.handle()).unwrap();
+    let ping = pinger.ping(addr, 0, 0, Duration::from_millis(3000) );
+
+    return reactor.run(ping);
 }

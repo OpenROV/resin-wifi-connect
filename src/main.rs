@@ -17,6 +17,9 @@ extern crate persistent;
 extern crate router;
 extern crate serde_json;
 extern crate staticfile;
+extern crate futures;
+extern crate tokio_core;
+extern crate tokio_ping;
 
 mod errors;
 mod config;

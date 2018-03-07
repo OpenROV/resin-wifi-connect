@@ -15,6 +15,10 @@ error_chain! {
     }
 
     errors {
+        PingUnsuccessful {
+            description( "Pinging public DNS failed" )
+        }
+
         RecvAccessPointSSIDs {
             description("Receiving access point SSIDs failed")
         }
@@ -90,6 +94,7 @@ error_chain! {
 
 pub fn exit_code(e: &Error) -> i32 {
     match *e.kind() {
+        ErrorKind::PingUnsuccessful => 14,
         ErrorKind::RecvAccessPointSSIDs => 4,
         ErrorKind::SendAccessPointSSIDs => 5,
         ErrorKind::SerializeAccessPointSSIDs => 6,
