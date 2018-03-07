@@ -121,7 +121,7 @@ pub fn start_server(
     router.get("/ssid", ssid, "ssid");
     router.post("/connect", connect, "connect");
     router.post("/disconnect", disconnect, "disconnect");
-    router.get("/checkConnectivity", check_internet_connection, "checkConnectivity" );
+    router.get("/internetAccess", check_internet_connection, "internetAccess" );
 
     let mut assets = Mount::new();
     assets.mount("/", router);
