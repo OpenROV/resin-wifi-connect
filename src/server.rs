@@ -1,9 +1,9 @@
 use std::sync::mpsc::{Receiver, Sender};
 use std::fmt;
-use std::net::Ipv4Addr;
 use std::error::Error as StdError;
 
 use serde_json;
+
 use path::PathBuf;
 use iron::prelude::*;
 use iron::{status, typemap, Iron, IronError, IronResult, Request, Response};
@@ -17,8 +17,13 @@ use errors::*;
 use network::{NetworkCommand, NetworkCommandResponse};
 use exit::{exit, ExitResult};
 
+#[derive(Serialize)]
+struct AccessPointSerializable {
+    ssid: String,
+    signal: u32
+}
+
 struct RequestSharedState {
-    gateway: Ipv4Addr,
     server_rx: Receiver<NetworkCommandResponse>,
     network_tx: Sender<NetworkCommand>,
     exit_tx: Sender<ExitResult>,
@@ -101,16 +106,13 @@ where
 }
 
 pub fn start_server(
-    gateway: Ipv4Addr,
     server_rx: Receiver<NetworkCommandResponse>,
     network_tx: Sender<NetworkCommand>,
     exit_tx: Sender<ExitResult>,
     ui_directory: &PathBuf,
 ) {
     let exit_tx_clone = exit_tx.clone();
-    let gateway_clone = gateway;
     let request_state = RequestSharedState {
-        gateway: gateway,
         server_rx: server_rx,
         network_tx: network_tx,
         exit_tx: exit_tx,
@@ -119,10 +121,12 @@ pub fn start_server(
     let mut router = Router::new();
     router.get("/", Static::new(ui_directory), "index");
     router.get("/ssids", ssid, "ssids");
+    router.get("/connection", ssid, "connection" );
     router.get("/internetAccess", check_internet_connection, "internetAccess" );
     router.post("/connect", connect, "connect");
     router.post("/disconnect", disconnect, "disconnect");
     router.post("/clear", clear_connections, "clear" );
+    router.post("/scan", scan, "scan" );
 
     let mut assets = Mount::new();
     assets.mount("/", router);
@@ -133,7 +137,7 @@ pub fn start_server(
     let mut chain = Chain::new(assets);
     chain.link(Write::<RequestSharedState>::both( request_state ));
 
-    let address = format!("{}:3090", gateway_clone);
+    let address = String::from( "0.0.0.0:3090" );
 
     info!("Starting HTTP server on {}", &address);
 
@@ -146,35 +150,47 @@ pub fn start_server(
     }
 }
 
-fn ssid(req: &mut Request) -> IronResult<Response> {
-    info!("User connected to the captive portal");
+fn scan(req: &mut Request) -> IronResult<Response> {
+    let request_state = get_request_state!(req);
+    let command = NetworkCommand::Scan;
 
+    if let Err(e) = request_state.network_tx.send(command) {
+        exit_with_error(&request_state, e, ErrorKind::ScanAccessPoints)
+    } else {
+        Ok(Response::with(status::Ok))
+    }
+}
+
+fn ssid(req: &mut Request) -> IronResult<Response> {
     let request_state = get_request_state!(req);
 
-    // Send command to network thread to fetch SSIDs
-    if let Err(e) = request_state.network_tx.send(NetworkCommand::Activate) {
-        return exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandActivate);
+    if let Err(e) = request_state.network_tx.send(NetworkCommand::ListAP) {
+        return exit_with_error(&request_state, e, ErrorKind::SendNetworkCommandListAP);
     }
 
-    // Wait for network thread to respond
-    // NOTE: Could choose to timeout request here if it isn't received fast enough
-    // https://doc.rust-lang.org/std/sync/mpsc/struct.Receiver.html
-    let access_points_ssids = match request_state.server_rx.recv() {
+    let access_points = match request_state.server_rx.recv() {
         Ok(result) => match result {
-            NetworkCommandResponse::AccessPointsSsids(ssids) => ssids,
+            NetworkCommandResponse::AccessPointResponse(aps) => aps,
             _ => Vec::new(),
         },
-        Err(e) => return exit_with_error(&request_state, e, ErrorKind::RecvAccessPointSSIDs),
+        Err(e) => return exit_with_error(&request_state, e, ErrorKind::RecvAccessPoints),
     };
 
-    // Convert vector of strings to JSON string
-    let access_points_json = match serde_json::to_string(&access_points_ssids) {
-        Ok(json) => json,
-        Err(e) => return exit_with_error(&request_state, e, ErrorKind::SerializeAccessPointSSIDs),
-    };
+    let mut aps : Vec<AccessPointSerializable> = Vec::new();
+
+    
+
+    for ap in access_points {
+        aps.push( AccessPointSerializable {
+            ssid: ap.ssid().as_str().unwrap().to_string(),
+            signal: ap.strength()
+        } );
+    }
+
+    let output = serde_json::to_string( &aps );
 
     // Respond with list of SSIDs in JSON format
-    Ok(Response::with((status::Ok, access_points_json)))
+    Ok(Response::with((status::Ok, output.unwrap())))
 }
 
 fn connect(req: &mut Request) -> IronResult<Response> {

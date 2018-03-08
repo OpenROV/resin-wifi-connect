@@ -23,20 +23,8 @@ error_chain! {
             description("Receiving access point SSIDs failed")
         }
 
-        SendAccessPointSSIDs {
-            description("Sending access point SSIDs failed")
-        }
-
-        SerializeAccessPointSSIDs {
-            description("Serializing access point SSIDs failed")
-        }
-
         RecvNetworkCommand {
             description("Receiving network command failed")
-        }
-
-        SendNetworkCommandActivate {
-            description("Sending NetworkCommand::Activate failed")
         }
 
         SendNetworkCommandConnect {
@@ -45,6 +33,10 @@ error_chain! {
 
         SendNetworkCommandClear {
             description( "Sending NetworkCommand::Clear failed" )
+        }
+
+        SendNetworkCommandListAP {
+            description( "Sending NetworkCommand::ListAP failed" )
         }
 
         DeviceByInterface(interface: String) {
@@ -93,6 +85,14 @@ error_chain! {
         TrapExitSignals {
             description("Trapping exit signals failed")
         }
+
+        RecvAccessPoints {
+            description("Receiving access points failed")
+        }
+
+        ScanAccessPoints {
+            description("Scanning access points failed")
+        }
     }
 }
 
@@ -100,10 +100,7 @@ pub fn exit_code(e: &Error) -> i32 {
     match *e.kind() {
         
         ErrorKind::RecvAccessPointSSIDs => 4,
-        ErrorKind::SendAccessPointSSIDs => 5,
-        ErrorKind::SerializeAccessPointSSIDs => 6,
         ErrorKind::RecvNetworkCommand => 7,
-        ErrorKind::SendNetworkCommandActivate => 8,
         ErrorKind::SendNetworkCommandConnect => 9,
         ErrorKind::DeviceByInterface(_) => 10,
         ErrorKind::NotAWiFiDevice(_) => 11,
@@ -118,6 +115,9 @@ pub fn exit_code(e: &Error) -> i32 {
         ErrorKind::NetworkManagerServiceState => 20,
         ErrorKind::BlockExitSignals => 21,
         ErrorKind::TrapExitSignals => 22,
+        ErrorKind::RecvAccessPoints => 24,
+        ErrorKind::ScanAccessPoints => 25,
+        ErrorKind::SendNetworkCommandListAP => 26,
         _ => 1,
     }
 }

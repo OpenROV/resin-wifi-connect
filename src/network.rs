@@ -13,24 +13,24 @@ use config::Config;
 use server::start_server;
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::str::FromStr;
 
 use tokio_core;
 use tokio_ping;
 
 pub enum NetworkCommand {
-    Activate,
     Timeout,
     Exit,
     Connect { ssid: String, passphrase: String },
     Disconnect,
     CheckInternet,
     Clear,
+    ListAP,
+    Scan,
 }
 
 pub enum NetworkCommandResponse {
-    AccessPointsSsids(Vec<String>),
-    InternetCheckResponse(bool)
+    InternetCheckResponse(bool),
+    AccessPointResponse(Vec<AccessPoint>),
 }
 
 struct NetworkCommandHandler {
@@ -89,13 +89,11 @@ impl NetworkCommandHandler {
         network_tx: Sender<NetworkCommand>,
     ) {
         // TODO: Set up gateway with specified interface's IPv4 address
-        let gateway = Ipv4Addr::from_str("0.0.0.0").expect( "Test" );
         let exit_tx_server = exit_tx.clone();
         let ui_directory = config.ui_directory.clone();
 
         thread::spawn(move || {
             start_server(
-                gateway,
                 server_rx,
                 network_tx,
                 exit_tx_server,
@@ -149,9 +147,6 @@ impl NetworkCommandHandler {
             let command = self.receive_network_command()?;
 
             match command {
-                NetworkCommand::Activate => {
-                    self.activate()?;
-                },
                 NetworkCommand::Timeout => {
                     if !self.activated {
                         info!("Timeout reached. Exiting...");
@@ -173,6 +168,12 @@ impl NetworkCommandHandler {
                 },
                 NetworkCommand::Clear => {
                     delete_existing_wifi_connections(&self.manager);
+                },
+                NetworkCommand::ListAP => {
+                    self.list_available_access_points()?;
+                },
+                NetworkCommand::Scan => {
+                    self.scan_access_points()?;
                 }
             }
         }
@@ -193,16 +194,29 @@ impl NetworkCommandHandler {
         let _ = exit_tx.send(result);
     }
 
-    fn activate(&mut self) -> ExitResult {
-        self.activated = true;
-
-        let access_points_ssids = get_access_points_ssids_owned(&self.access_points);
+    fn list_available_access_points(&self) -> ExitResult {
+        
+        let access_points = get_access_points( &self.device )?;
 
         self.server_tx
-            .send(NetworkCommandResponse::AccessPointsSsids(
-                access_points_ssids,
-            ))
-            .chain_err(|| ErrorKind::SendAccessPointSSIDs)
+            .send(NetworkCommandResponse::AccessPointResponse( access_points ) )
+            .chain_err(|| ErrorKind::PingUnsuccessful)
+    }
+
+    fn scan_access_points(&self) -> Result<bool> {
+
+        match self.device.as_wifi_device().unwrap().request_scan() {
+            Ok(()) => {
+                info!( "Yay scan" );
+                true;
+            },
+            Err(e) => {
+                info!( "Err scan {:?}", e );
+                false;
+            }
+        }
+
+        Ok(false)
     }
 
     fn check_internet(&mut self) -> ExitResult {
@@ -221,10 +235,6 @@ impl NetworkCommandHandler {
     }
 
     fn connect(&mut self, ssid: &str, passphrase: &str) -> Result<bool> {
-        // delete_connection_if_exists(&self.manager, ssid);
-
-        // TODO: If already connected to specified SSID, return Ok
-
         self.access_points = get_access_points(&self.device)?;
 
         if let Some(access_point) = find_access_point(&self.access_points, ssid) {
@@ -383,12 +393,12 @@ fn get_access_points_ssids(access_points: &[AccessPoint]) -> Vec<&str> {
         .collect()
 }
 
-fn get_access_points_ssids_owned(access_points: &[AccessPoint]) -> Vec<String> {
-    access_points
-        .iter()
-        .map(|ap| ap.ssid().as_str().unwrap().to_string())
-        .collect()
-}
+// fn get_access_points_ssids_owned(access_points: &[AccessPoint]) -> Vec<String> {
+//     access_points
+//         .iter()
+//         .map(|ap| ap.ssid().as_str().unwrap().to_string())
+//         .collect()
+// }
 
 fn find_access_point<'a>(access_points: &'a [AccessPoint], ssid: &str) -> Option<&'a AccessPoint> {
     for access_point in access_points.iter() {

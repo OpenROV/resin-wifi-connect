@@ -5,13 +5,15 @@ authors = ["Zahari Petkov <zahari@resin.io>", "Aaron Brodersen <aaron@resin.io>"
 description = "Easy WiFi setup for Linux devices from your mobile phone or laptop"
 
 [dependencies]
-network-manager = "0.9"
+network-manager = { git = "https://github.com/spiderkeys/network-manager.git", branch = "ap-strength" }
 clap = "2.24"
 iron = "0.5"
 staticfile = "0.4"
 mount = "0.3"
 router = "0.5"
-serde_json = "1.0"
+serde = "1.0.27"
+serde_derive = "1.0.27"
+serde_json = "1.0.10"
 persistent = "0.3"
 params = "0.6"
 log = "0.3"

@@ -6,6 +6,11 @@ extern crate log;
 #[macro_use]
 extern crate error_chain;
 
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
+
 extern crate clap;
 extern crate env_logger;
 extern crate iron;
@@ -15,7 +20,6 @@ extern crate nix;
 extern crate params;
 extern crate persistent;
 extern crate router;
-extern crate serde_json;
 extern crate staticfile;
 extern crate futures;
 extern crate tokio_core;
